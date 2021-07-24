@@ -16,96 +16,10 @@
 #include <stdlib.h>
 #include <assert.h>
 
-
-//=====================================================================
-// 32BIT INTEGER DEFINITION 
-//=====================================================================
-#ifndef __INTEGER_32_BITS__
-#define __INTEGER_32_BITS__
-#if defined(_WIN64) || defined(WIN64) || defined(__amd64__) || \
-	defined(__x86_64) || defined(__x86_64__) || defined(_M_IA64) || \
-	defined(_M_AMD64)
-	typedef unsigned int ISTDUINT32;
-	typedef int ISTDINT32;
-#elif defined(_WIN32) || defined(WIN32) || defined(__i386__) || \
-	defined(__i386) || defined(_M_X86)
-	typedef unsigned long ISTDUINT32;
-	typedef long ISTDINT32;
-#elif defined(__MACOS__)
-	typedef UInt32 ISTDUINT32;
-	typedef SInt32 ISTDINT32;
-#elif defined(__APPLE__) && defined(__MACH__)
-	#include <sys/types.h>
-	typedef u_int32_t ISTDUINT32;
-	typedef int32_t ISTDINT32;
-#elif defined(__BEOS__)
-	#include <sys/inttypes.h>
-	typedef u_int32_t ISTDUINT32;
-	typedef int32_t ISTDINT32;
-#elif (defined(_MSC_VER) || defined(__BORLANDC__)) && (!defined(__MSDOS__))
-	typedef unsigned __int32 ISTDUINT32;
-	typedef __int32 ISTDINT32;
-#elif defined(__GNUC__)
-	#include <stdint.h>
-	typedef uint32_t ISTDUINT32;
-	typedef int32_t ISTDINT32;
-#else 
-	typedef unsigned long ISTDUINT32; 
-	typedef long ISTDINT32;
-#endif
-#endif
-
-
-//=====================================================================
-// Integer Definition
-//=====================================================================
-#ifndef __IINT8_DEFINED
-#define __IINT8_DEFINED
-typedef char IINT8;
-#endif
-
-#ifndef __IUINT8_DEFINED
-#define __IUINT8_DEFINED
-typedef unsigned char IUINT8;
-#endif
-
-#ifndef __IUINT16_DEFINED
-#define __IUINT16_DEFINED
-typedef unsigned short IUINT16;
-#endif
-
-#ifndef __IINT16_DEFINED
-#define __IINT16_DEFINED
-typedef short IINT16;
-#endif
-
-#ifndef __IINT32_DEFINED
-#define __IINT32_DEFINED
-typedef ISTDINT32 IINT32;
-#endif
-
-#ifndef __IUINT32_DEFINED
-#define __IUINT32_DEFINED
-typedef ISTDUINT32 IUINT32;
-#endif
-
-#ifndef __IINT64_DEFINED
-#define __IINT64_DEFINED
-#if defined(_MSC_VER) || defined(__BORLANDC__)
-typedef __int64 IINT64;
-#else
-typedef long long IINT64;
-#endif
-#endif
-
-#ifndef __IUINT64_DEFINED
-#define __IUINT64_DEFINED
-#if defined(_MSC_VER) || defined(__BORLANDC__)
-typedef unsigned __int64 IUINT64;
-#else
-typedef unsigned long long IUINT64;
-#endif
-#endif
+#include "iqueue.h"
+#include "ipcc.h"
+#include "idata.h"
+#include "iqueue.h"
 
 #ifndef INLINE
 #if defined(__GNUC__)
@@ -125,120 +39,6 @@ typedef unsigned long long IUINT64;
 
 #if (!defined(__cplusplus)) && (!defined(inline))
 #define inline INLINE
-#endif
-
-
-//=====================================================================
-// QUEUE DEFINITION                                                  
-//=====================================================================
-#ifndef __IQUEUE_DEF__
-#define __IQUEUE_DEF__
-
-// HEAD <--------------------------------------
-//  |                                         |
-//  v                                         |
-//  [HEAD_NODE] <-> [NODE1] <->  ... <-> [NODE_N] -|
-struct IQUEUEHEAD {
-	struct IQUEUEHEAD *next, *prev;
-};
-
-typedef struct IQUEUEHEAD iqueue_head;
-
-
-//---------------------------------------------------------------------
-// queue init                                                         
-//---------------------------------------------------------------------
-#define IQUEUE_HEAD_INIT(name) { &(name), &(name) }
-#define IQUEUE_HEAD(name) \
-	struct IQUEUEHEAD name = IQUEUE_HEAD_INIT(name)
-
-// 初始化队列，让 next 和 prev 都指向自己
-#define IQUEUE_INIT(ptr) ( \
-	(ptr)->next = (ptr), (ptr)->prev = (ptr))
-
-// 计算 TYPE 结构体中 MEMBER 的偏移量
-#define IOFFSETOF(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
-
-// 指针前移至上一层的PKG (上一层为 TYPE 类型，本数据包为上层的 MEMBER)
-#define ICONTAINEROF(ptr, type, member) ( \
-		(type*)( ((char*)((type*)ptr)) - IOFFSETOF(type, member)) )
-
-// 指针前移至上一层的PKG (上一层为 TYPE 类型，本数据包为上层的 MEMBER)
-#define IQUEUE_ENTRY(ptr, type, member) ICONTAINEROF(ptr, type, member)
-
-
-//---------------------------------------------------------------------
-// queue operation  
-// 队列操作                   
-//---------------------------------------------------------------------
-// 头插
-#define IQUEUE_ADD(node, head) ( \
-	(node)->prev = (head), (node)->next = (head)->next, \
-	(head)->next->prev = (node), (head)->next = (node))
-
-// 尾插
-#define IQUEUE_ADD_TAIL(node, head) ( \
-	(node)->prev = (head)->prev, (node)->next = (head), \
-	(head)->prev->next = (node), (head)->prev = (node))
-
-// 短接两个节点，即“删除”中间节点
-#define IQUEUE_DEL_BETWEEN(p, n) ((n)->prev = (p), (p)->next = (n))
-
-// 删除 entry 节点，短接前后节点
-#define IQUEUE_DEL(entry) (\
-	(entry)->next->prev = (entry)->prev, \
-	(entry)->prev->next = (entry)->next, \
-	(entry)->next = 0, (entry)->prev = 0)
-
-// 删除 entry 然后让 entry 自成一个新的双端队列
-#define IQUEUE_DEL_INIT(entry) do { \
-	IQUEUE_DEL(entry); IQUEUE_INIT(entry); } while (0)
-
-// next 指向自己，队列即为空
-#define IQUEUE_IS_EMPTY(entry) ((entry) == (entry)->next)
-
-#define iqueue_init		IQUEUE_INIT
-#define iqueue_entry	IQUEUE_ENTRY
-#define iqueue_add		IQUEUE_ADD
-#define iqueue_add_tail	IQUEUE_ADD_TAIL
-#define iqueue_del		IQUEUE_DEL
-#define iqueue_del_init	IQUEUE_DEL_INIT
-#define iqueue_is_empty IQUEUE_IS_EMPTY
-
-// 遍历队列
-#define IQUEUE_FOREACH(iterator, head, TYPE, MEMBER) \
-	for ((iterator) = iqueue_entry((head)->next, TYPE, MEMBER); \
-		&((iterator)->MEMBER) != (head); \
-		(iterator) = iqueue_entry((iterator)->MEMBER.next, TYPE, MEMBER))
-
-// 遍历队列
-#define iqueue_foreach(iterator, head, TYPE, MEMBER) \
-	IQUEUE_FOREACH(iterator, head, TYPE, MEMBER)
-
-// 遍历队列
-#define iqueue_foreach_entry(pos, head) \
-	for( (pos) = (head)->next; (pos) != (head) ; (pos) = (pos)->next )
-	
-
-#define __iqueue_splice(list, head) do {	\
-		iqueue_head *first = (list)->next, *last = (list)->prev; \
-		iqueue_head *at = (head)->next; \
-		(first)->prev = (head), (head)->next = (first);		\
-		(last)->next = (at), (at)->prev = (last); }	while (0)
-
-#define iqueue_splice(list, head) do { \
-	if (!iqueue_is_empty(list)) __iqueue_splice(list, head); } while (0)
-
-#define iqueue_splice_init(list, head) do {	\
-	iqueue_splice(list, head);	iqueue_init(list); } while (0)
-
-
-#ifdef _MSC_VER
-#pragma warning(disable:4311)
-#pragma warning(disable:4312)
-#pragma warning(disable:4996)
-#endif
-
 #endif
 
 
@@ -278,37 +78,6 @@ typedef struct IQUEUEHEAD iqueue_head;
 	#endif
 #endif
 
-
-//=====================================================================
-// SEGMENT
-//=====================================================================
-struct IKCPSEG
-{
-	struct IQUEUEHEAD node; // 用于串成队列。实际发送和接收的时候，自动去掉
-	IUINT32 conv;           // 表示会话的编号，通信双方需要保证 conv 相同
-	IUINT32 cmd;            // 用来区分分片类型
-
-/*
-const IUINT32 IKCP_CMD_PUSH = 81;		// cmd: push data           传输的数据包
-const IUINT32 IKCP_CMD_ACK  = 82;		// cmd: ack                 ACK包，类似于 TCP中的 ACK，通知对方收到了哪些包
-const IUINT32 IKCP_CMD_WASK = 83;		// cmd: window probe (ask)  用来探测远端窗口大小
-const IUINT32 IKCP_CMD_WINS = 84;		// cmd: window size (tell)  告诉对方自己窗口大小
-*/
-
-	IUINT32 frg;            // segment分片ID（在message中的索引，由大到小，0表示最后一个分片），???后面还有几个seg???
-	IUINT32 wnd;            // 剩余接收窗口大小(接收窗口大小-接收队列大小)
-	IUINT32 ts;             // message发送时刻的时间戳
-	IUINT32 sn;             // message分片segment的序号 （???ACK 的确认序号）
-	IUINT32 una;            // 待接收消息序号(接收滑动窗口左端)
-	IUINT32 len;            // 数据长度
-	IUINT32 resendts;       // 下次超时重传的时间戳
-	IUINT32 rto;            // 该分片的超时重传等待时间
-	IUINT32 fastack;        // 收到ack时计算的该分片被跳过的累计次数
-	IUINT32 xmit;           // 发送分片的次数，每发送一次加一。
-	char data[1];
-};
-
-
 // RTT: 发送一个数据包到收到对应的ACK，所花费的时间
 // RTO: 发送数据包，启动重传定时器，重传定时器到期所花费的时间
 
@@ -320,7 +89,10 @@ const IUINT32 IKCP_CMD_WINS = 84;		// cmd: window size (tell)  告诉对方自�
 // 对于每个收到的seg，都会返回ACK
 struct IKCPCB
 {
-	// conv: 表示会话的编号，通信双方需要保证 conv 相同
+	// PCC_Control_Block
+  struct PCCCB pcccb;
+
+  // conv: 表示会话的编号，通信双方需要保证 conv 相同
 	// mtu: 最大传输单元，包或帧的最大长度
 	// mss: 通信时每一个报文段所能承载的最大数据长度
 	// state: 如果一个包的重发次数大于 dead_link ，state 将被设置为 (IUINT32)-1
@@ -439,6 +211,7 @@ typedef struct IKCPCB ikcpcb;
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 
 //---------------------------------------------------------------------
 // interface

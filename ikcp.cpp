@@ -16,8 +16,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
-
-
+#include <math.h>
 
 //=====================================================================
 // KCP BASIC
@@ -44,7 +43,6 @@ const IUINT32 IKCP_THRESH_MIN = 2;
 const IUINT32 IKCP_PROBE_INIT = 7000;		// 7 secs to probe window size
 const IUINT32 IKCP_PROBE_LIMIT = 120000;	// up to 120 secs to probe window
 const IUINT32 IKCP_FASTACK_LIMIT = 5;		// max times to trigger fastack
-
 
 //---------------------------------------------------------------------
 // encode / decode
@@ -228,6 +226,7 @@ void ikcp_qprint(const char *name, const struct IQUEUEHEAD *head)
 }
 
 
+
 //---------------------------------------------------------------------
 // create a new kcpcb
 // 初始化一个 KCP 的控制模块，赋初值
@@ -298,7 +297,9 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->output = NULL;
 	kcp->writelog = NULL;
 
-	return kcp;
+	initPCC(&kcp->pcccb, 2 * kcp->mss, PCC_MIN_EPSILON);
+
+  return kcp;
 }
 
 
@@ -883,7 +884,9 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			
 			// 更新 send_una
 			ikcp_shrink_buf(kcp);
-
+      
+      // PCC 拥塞控制
+      recvAck(&kcp->pcccb, sn);
 
 			// 更新最新 ACK 信息
 			if (flag == 0) {
@@ -973,9 +976,15 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 
 	// 若新的接收窗口后移了，说明接收到了新的ack，更新KCP协议栈的发送窗口大小
 	if (_itimediff(kcp->snd_una, prev_una) > 0) {
-		// 若本机拥塞窗口 < 远端接收窗口
-		if (kcp->cwnd < kcp->rmt_wnd) {
-			IUINT32 mss = kcp->mss;
+		// 如果cwnd尚未初始化
+    if (kcp->cwnd == 0) {
+      kcp->cwnd = _imin_(kcp->rmt_wnd, calculateCwnd(kcp->send_buf, 2 * kcp->mss / (kcp->rx_rttval == 0 ? 1 : kcp->rx_rttval)));
+    }
+
+    // 若本机拥塞窗口 < 远端接收窗口
+    if (kcp->cwnd < kcp->rmt_wnd) {
+			/* KCP 默认拥塞控制
+      IUINT32 mss = kcp->mss;
 			if (kcp->cwnd < kcp->ssthresh) {
 				kcp->cwnd++;
 				kcp->incr += mss;
@@ -991,10 +1000,14 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 					kcp->cwnd++;
 				#endif
 				}
-			}
+			} */
+
+      kcp->cwnd = calculateCwnd(&kcp->send_buf, getCwnd(&kcp->pcccb)); 
+
+
 			if (kcp->cwnd > kcp->rmt_wnd) {
 				kcp->cwnd = kcp->rmt_wnd;
-				kcp->incr = kcp->rmt_wnd * mss;
+				// kcp->incr = kcp->rmt_wnd * mss;
 			}
 		}
 	}
@@ -1127,7 +1140,9 @@ void ikcp_flush(ikcpcb *kcp)
 	cwnd = _imin_(kcp->snd_wnd, kcp->rmt_wnd);
 	if (kcp->nocwnd == 0) cwnd = _imin_(kcp->cwnd, cwnd);
 
-	// move data from snd_queue to snd_buf
+	startNewExp(&kcp->ipcccb);
+
+  // move data from snd_queue to snd_buf
 	while (_itimediff(kcp->snd_nxt, kcp->snd_una + cwnd) < 0) {
 		IKCPSEG *newseg;
 		if (iqueue_is_empty(&kcp->snd_queue)) break;
@@ -1149,6 +1164,9 @@ void ikcp_flush(ikcpcb *kcp)
 		newseg->rto = kcp->rx_rto;
 		newseg->fastack = 0;
 		newseg->xmit = 0;
+
+    // PCC 拥塞控制
+    sendPkg(&kcp->pcccb, newseg->sn);
 	}
 
 	// calculate resent
@@ -1424,5 +1442,4 @@ IUINT32 ikcp_getconv(const void *ptr)
 	ikcp_decode32u((const char*)ptr, &conv);
 	return conv;
 }
-
 
